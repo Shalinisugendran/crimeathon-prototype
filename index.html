@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="IOC Gate checks outside threat intelligence before anyone acts on it.">
+<title>IOC Gate: check outside threat intel before you act on it</title>
+<style>
+  :root {
+    --ink: #0B1F3A;
+    --text: #1E2A3B;
+    --muted: #5B6B7F;
+    --paper: #F3F6FA;
+    --panel: #FFFFFF;
+    --line: #DCE3EB;
+    --field-line: #C3CEDA;
+    --teal: #0B7A86;
+    --teal-bright: #2EC4D0;
+    --red: #B42318;
+    --amber: #9A6212;
+    --green: #2F855A;
+    --red-bg: #FBEBE9;
+    --amber-bg: #FAF0DE;
+    --green-bg: #E6F3EB;
+    --teal-bg: #E2F2F4;
+    --slate-bg: #EDF1F5;
+    --display: "Bahnschrift", "DIN Alternate", "DIN Next LT Pro", "Barlow", "Segoe UI", system-ui, sans-serif;
+    --body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--text); font: 400 15px/1.55 var(--body); }
+  h1, h2, h3 { font-family: var(--display); color: var(--ink); font-weight: 600; line-height: 1.2; margin: 0; }
+  p { margin: 0; }
+  a { color: var(--teal); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  .skip { position: absolute; left: -9999px; top: 8px; background: #fff; color: var(--ink); padding: 8px 12px; border-radius: 6px; z-index: 10; }
+  .skip:focus { left: 12px; }
+  [hidden] { display: none !important; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---------- Masthead ---------- */
+  .masthead {
+    color: #fff;
+    background:
+      radial-gradient(1100px 420px at 88% -20%, rgba(46, 196, 208, .20), transparent 60%),
+      linear-gradient(118deg, #08172E 0%, #0D2A4C 55%, #0E4B5B 100%);
+  }
+  .masthead :focus-visible { outline-color: var(--teal-bright); }
+  .top { max-width: 1280px; margin: 0 auto; padding: 16px 32px; display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+  .brand .name { font-family: var(--display); font-size: 22px; font-weight: 600; letter-spacing: .01em; line-height: 1.1; }
+  .brand .sub { font-size: 13px; color: rgba(255, 255, 255, .72); }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tabs button { background: transparent; border: 0; border-radius: 6px; padding: 8px 14px; color: rgba(255, 255, 255, .78); cursor: pointer; font-size: 14.5px; }
+  .tabs button:hover { color: #fff; background: rgba(255, 255, 255, .07); }
+  .tabs button[aria-selected="true"] { color: #fff; background: rgba(255, 255, 255, .14); font-weight: 600; }
+  .offline { font-size: 12.5px; color: var(--teal-bright); border: 1px solid rgba(46, 196, 208, .55); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+
+  /* The gate lane: the one bold element on the page */
+  .lane { max-width: 1280px; margin: 0 auto; padding: 8px 32px 30px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 36px; align-items: center; }
+  .stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); position: relative; }
+  .stages::before { content: ""; position: absolute; top: 25px; left: 26px; right: 26px; height: 2px; background: rgba(255, 255, 255, .22); }
+  .stage { position: relative; padding-right: 12px; }
+  .node {
+    position: relative; z-index: 1; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, .45); background: #0D2A4C; font-family: var(--display); font-size: 21px; font-weight: 600;
+    transition: background .25s ease, border-color .25s ease, color .25s ease;
+  }
+  .stage-name { display: block; margin-top: 12px; font-family: var(--display); font-size: 19px; font-weight: 600; }
+  .stage-q { display: block; font-size: 13.5px; color: rgba(255, 255, 255, .72); }
+  .stage-result { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; min-height: 20px; }
+  .stage.is-pass .node { background: var(--teal); border-color: var(--teal-bright); }
+  .stage.is-pass .stage-result { color: #8FE3EA; }
+  .stage.is-warn .node { background: #3B3424; border-color: #E8B44C; color: #F3CF7F; }
+  .stage.is-warn .stage-result { color: #F3CF7F; }
+  .stage.is-fail .node { background: var(--red); border-color: #F2A196; }
+  .stage.is-fail .stage-result { color: #F7B7AE; }
+  .stage.is-skip { opacity: .5; }
+  .stage.is-skip .node { border-style: dashed; }
+  .verdict { border: 3px solid rgba(255, 255, 255, .32); border-radius: 12px; padding: 14px 18px 16px; background: rgba(255, 255, 255, .05); }
+  .verdict-label { font-size: 12.5px; color: rgba(255, 255, 255, .7); }
+  .verdict-word { display: block; font-family: var(--display); font-size: 27px; font-weight: 700; letter-spacing: .02em; line-height: 1.15; }
+  .verdict-note { display: block; margin-top: 4px; font-size: 13.5px; color: rgba(255, 255, 255, .82); }
+  .verdict.v-REJECT { border-color: #F2A196; background: rgba(180, 35, 24, .28); }
+  .verdict.v-QUARANTINE { border-color: #E8B44C; background: rgba(154, 98, 18, .30); }
+  .verdict.v-ACCEPT_WATCH { border-color: var(--teal-bright); background: rgba(11, 122, 134, .30); }
+  .verdict.v-ACCEPT_ENFORCE { border-color: #7FD1A0; background: rgba(47, 133, 90, .32); }
+  .verdict.is-new { animation: stamp .35s ease-out; }
+  @keyframes stamp { from { transform: scale(1.06); opacity: .2; } to { transform: scale(1); opacity: 1; } }
+
+  /* ---------- Layout ---------- */
+  main { max-width: 1280px; margin: 0 auto; padding: 28px 32px 48px; }
+  .workbench { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; align-items: start; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .panel-head { padding: 20px 22px 14px; }
+  .panel-head h2 { font-size: 22px; }
+  .panel-head p { margin-top: 4px; color: var(--muted); font-size: 14px; }
+
+  /* ---------- Form ---------- */
+  fieldset { border: 0; border-top: 1px solid var(--line); margin: 0; padding: 16px 22px 18px; min-width: 0; }
+  legend { float: left; width: 100%; padding: 0; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-family: var(--display); font-size: 17px; font-weight: 600; color: var(--ink); }
+  legend + * { clear: both; }
+  .ev { font-family: var(--body); font-size: 12px; font-weight: 600; color: var(--ink); background: var(--slate-bg); border-radius: 4px; padding: 1px 7px; white-space: nowrap; }
+  .field { margin-top: 10px; }
+  legend + .field { margin-top: 0; }
+  label, .label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  input[type="text"], input[type="date"], input[type="number"], select, textarea {
+    width: 100%; border: 1px solid var(--field-line); border-radius: 6px; background: #FBFCFE; padding: 8px 10px; font-size: 14px;
+  }
+  input[type="text"], textarea.mono { font-family: var(--mono); font-size: 13.5px; }
+  textarea { min-height: 84px; resize: vertical; line-height: 1.45; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--teal); outline-offset: 0; border-color: var(--teal); background: #fff; }
+  .row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--text); font-weight: 400; margin: 0; }
+  .check input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--teal); flex: none; }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 16px 22px 20px; border-top: 1px solid var(--line); }
+  .btn { border: 1px solid transparent; border-radius: 6px; padding: 9px 16px; font-size: 14.5px; font-weight: 600; cursor: pointer; line-height: 1.3; }
+  .btn-primary { background: var(--teal); color: #fff; }
+  .btn-primary:hover { background: #096A75; }
+  .btn-secondary { background: #fff; color: var(--ink); border-color: var(--field-line); }
+  .btn-secondary:hover { background: var(--slate-bg); }
+  .btn-quiet { background: transparent; color: var(--muted); }
+  .btn-quiet:hover { color: var(--ink); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .actions select { width: auto; min-width: 0; font-size: 14px; }
+  .form-error { margin: 0 22px 16px; padding: 10px 12px; border-radius: 6px; background: var(--red-bg); color: var(--red); font-size: 14px; }
+
+  /* ---------- Results ---------- */
+  .empty { padding: 28px 22px 32px; color: var(--muted); }
+  .empty p + p { margin-top: 10px; }
+  .summary { padding: 20px 22px; border-bottom: 1px solid var(--line); }
+  .summary .outcome { font-family: var(--display); font-size: 26px; font-weight: 700; letter-spacing: .02em; }
+  .summary .outcome.o-REJECT { color: var(--red); }
+  .summary .outcome.o-QUARANTINE { color: var(--amber); }
+  .summary .outcome.o-ACCEPT_WATCH { color: var(--teal); }
+  .summary .outcome.o-ACCEPT_ENFORCE { color: var(--green); }
+  .summary p { font-size: 16px; margin-top: 4px; color: var(--text); max-width: 68ch; }
+  .summary .meta { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  .meta code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+  .stage-block { padding: 16px 22px; border-bottom: 1px solid var(--line); }
+  .stage-block h3 { font-size: 17px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .stage-block h3 .num { color: var(--teal); }
+  .tag { font-family: var(--body); font-size: 12px; font-weight: 600; border-radius: 4px; padding: 1px 8px; }
+  .t-pass { background: var(--teal-bg); color: var(--teal); }
+  .t-warn { background: var(--amber-bg); color: var(--amber); }
+  .t-fail { background: var(--red-bg); color: var(--red); }
+  .t-skip { background: var(--slate-bg); color: var(--muted); }
+  .findings { list-style: none; margin: 10px 0 0; padding: 0; }
+  .findings li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 6px 0; font-size: 14px; }
+  .findings li + li { border-top: 1px dashed var(--line); }
+  .findings .ev { margin-top: 1px; }
+  .ico { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; margin-top: 1px; }
+  .ico svg { width: 12px; height: 12px; }
+  .i-pass { background: var(--teal-bg); color: var(--teal); }
+  .i-warn { background: var(--amber-bg); color: var(--amber); }
+  .i-fail { background: var(--red-bg); color: var(--red); }
+  .i-info { background: var(--slate-bg); color: var(--muted); }
+  .note { margin-top: 8px; font-size: 13.5px; color: var(--muted); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 13px; font-weight: 600; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.ind { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; color: var(--ink); min-width: 150px; }
+  td .sub { display: block; font-family: var(--body); font-size: 12px; color: var(--muted); }
+  .d { display: inline-block; font-size: 12.5px; font-weight: 600; border-radius: 4px; padding: 1px 8px; white-space: nowrap; }
+  .d-block { background: var(--green-bg); color: var(--green); }
+  .d-watch { background: var(--teal-bg); color: var(--teal); }
+  .d-held { background: var(--amber-bg); color: var(--amber); }
+  .d-evidence { background: var(--red-bg); color: var(--red); }
+  .d-ignored { background: var(--slate-bg); color: var(--muted); }
+  .result-actions { display: flex; gap: 10px; flex-wrap: wrap; padding: 16px 22px 20px; }
+
+  /* ---------- Other views ---------- */
+  .page { max-width: 920px; }
+  .page > h1 { font-size: 30px; }
+  .page > .lede { margin-top: 6px; color: var(--muted); max-width: 68ch; }
+  .page .panel { margin-top: 20px; }
+  .page .panel fieldset:first-of-type { border-top: 0; }
+  .prose { padding: 22px; }
+  .prose h2 { font-size: 21px; margin-top: 22px; }
+  .prose h2:first-child { margin-top: 0; }
+  .prose p, .prose li { max-width: 70ch; }
+  .prose p { margin-top: 8px; }
+  .prose ol, .prose ul { margin: 8px 0 0; padding-left: 22px; }
+  .prose li { margin-top: 6px; }
+  .outcomes { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin-top: 10px; }
+  .outcomes dt { font-family: var(--display); font-weight: 700; letter-spacing: .02em; }
+  .outcomes dd { margin: 0; }
+  .settings-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .ok { color: var(--green); font-weight: 600; }
+  .bad { color: var(--red); font-weight: 600; }
+
+  footer { max-width: 1280px; margin: 0 auto; padding: 18px 32px 32px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); }
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: calc(100% - 32px); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 1040px) {
+    .workbench { grid-template-columns: minmax(0, 1fr); }
+    .lane { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  }
+  @media (max-width: 640px) {
+    .top, .lane, main, footer { padding-left: 16px; padding-right: 16px; }
+    .stage-name { font-size: 16px; }
+    .stage-q { font-size: 12.5px; }
+    .node { width: 44px; height: 44px; font-size: 18px; }
+    .stages::before { top: 21px; }
+    .row-3 { grid-template-columns: 1fr; }
+    .row-2 { grid-template-columns: 1fr; }
+    .findings li { grid-template-columns: 22px minmax(0, 1fr); }
+    .findings li .ev { grid-column: 2; justify-self: start; }
+    .outcomes { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="masthead">
+  <header class="top">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <rect x="1" y="1" width="32" height="32" rx="8" fill="rgba(46,196,208,.14)" stroke="#2EC4D0"/>
+        <path d="M7 17h20" stroke="#2EC4D0" stroke-width="2"/>
+        <circle cx="9" cy="17" r="3" fill="#2EC4D0"/><circle cx="17" cy="17" r="3" fill="#fff"/><circle cx="25" cy="17" r="3" fill="#2EC4D0"/>
+      </svg>
+      <div>
+        <p class="name">IOC Gate</p>
+        <p class="sub">Harbor &amp; Finch, Case File CR-26-047</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button type="button" role="tab" id="tab-check" aria-controls="view-check" aria-selected="true">Check a notice</button>
+      <button type="button" role="tab" id="tab-settings" aria-controls="view-settings" aria-selected="false" tabindex="-1">Settings</button>
+      <button type="button" role="tab" id="tab-audit" aria-controls="view-audit" aria-selected="false" tabindex="-1">Audit log</button>
+      <button type="button" role="tab" id="tab-about" aria-controls="view-about" aria-selected="false" tabindex="-1">How it works</button>
+    </nav>
+    <span class="offline" title="Nothing you enter leaves this page">Works offline</span>
+  </header>
+
+  <section class="lane" id="lane" aria-label="Gate progress">
+    <ol class="stages">
+      <li class="stage" data-stage="1"><span class="node" aria-hidden="true">1</span><span class="stage-name">Sender check</span><span class="stage-q">Who sent it?</span><span class="stage-result" id="stage-result-1"></span></li>
+      <li class="stage" data-stage="2"><span class="node" aria-hidden="true">2</span><span class="stage-name">Harm check</span><span class="stage-q">Would it hurt us?</span><span class="stage-result" id="stage-result-2"></span></li>
+      <li class="stage" data-stage="3"><span class="node" aria-hidden="true">3</span><span class="stage-name">Corroboration</span><span class="stage-q">Can anyone confirm it?</span><span class="stage-result" id="stage-result-3"></span></li>
+    </ol>
+    <div class="verdict" id="verdict" aria-live="polite">
+      <span class="verdict-label">Decision</span>
+      <span class="verdict-word" id="verdict-word">None yet</span>
+      <span class="verdict-note" id="verdict-note">Fill in a notice and run the gate.</span>
+    </div>
+  </section>
+</div>
+
+<main id="main">
+  <!-- ===================== Check a notice ===================== -->
+  <section id="view-check" role="tabpanel" aria-labelledby="tab-check">
+    <div class="workbench">
+      <form id="notice-form" class="panel" novalidate>
+        <div class="panel-head">
+          <h2>The notice</h2>
+          <p>Paste what the outside company sent. Nothing leaves this page.</p>
+        </div>
+
+        <fieldset>
+          <legend>Sender <span class="ev" data-ev="notice"></span></legend>
+          <div class="field"><label for="f-from">From</label><input type="text" id="f-from" autocomplete="off" spellcheck="false" placeholder="Name &lt;someone@domain&gt;"></div>
+          <div class="field"><label for="f-replyto">Reply-To</label><input type="text" id="f-replyto" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="f-returnpath">Return-Path</label><input type="text" id="f-returnpath" autocomplete="off" spellcheck="false"></div>
+          <div class="field">
+            <span class="label">Authentication results from the email headers</span>
+            <div class="row-3">
+              <div><label for="f-spf">SPF</label><select id="f-spf"><option value="">Not given</option><option>pass</option><option>fail</option><option>softfail</option><option>none</option></select></div>
+              <div><label for="f-dkim">DKIM</label><select id="f-dkim"><option value="">Not given</option><option>pass</option><option>fail</option><option>none</option></select></div>
+              <div><label for="f-dmarc">DMARC</label><select id="f-dmarc"><option value="">Not given</option><option>pass</option><option>fail</option><option>none</option></select></div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Links in the notice <span class="ev" data-ev="notice"></span></legend>
+          <label for="f-links" class="label">One link per line</label>
+          <textarea id="f-links" class="mono" spellcheck="false"></textarea>
+        </fieldset>
+
+        <fieldset>
+          <legend>Sender domain registration <span class="ev" data-ev="registration"></span></legend>
+          <div class="row-2">
+            <div><label for="f-created">Registered on</label><input type="date" id="f-created"></div>
+            <div><label for="f-registrant">Registered to</label><input type="text" id="f-registrant" autocomplete="off"></div>
+          </div>
+          <div class="field"><label class="check"><input type="checkbox" id="f-privacy"> Owner hidden by a privacy service</label></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Indicator list <span class="ev" data-ev="list"></span></legend>
+          <label for="f-indicators" class="label">One per line: IP address, range, domain, URL or file hash</label>
+          <textarea id="f-indicators" class="mono" spellcheck="false" rows="5"></textarea>
+          <p class="hint">Defanged entries such as hxxp:// or example[.]com are fine.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Our logs <span class="ev" data-ev="logs"></span></legend>
+          <label for="f-logs" class="label">Paste log lines to search</label>
+          <textarea id="f-logs" class="mono" spellcheck="false" rows="4"></textarea>
+        </fieldset>
+
+        <fieldset>
+          <legend>Confirmation <span class="ev" data-ev="contact"></span></legend>
+          <label class="check"><input type="checkbox" id="f-confirmed"> The contract contact confirmed this notice through a phone number or address we already had</label>
+          <div class="field"><label for="f-confirmnote">Who confirmed it, and how (optional)</label><input type="text" id="f-confirmnote" autocomplete="off"></div>
+        </fieldset>
+
+        <div id="form-error" class="form-error" role="alert" hidden></div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary">Run the gate</button>
+          <select id="example-picker" aria-label="Load an example">
+            <option value="">Load an example</option>
+            <option value="lookalike">Look-alike sender</option>
+            <option value="poisoned">Poisoned list</option>
+            <option value="forged">Forged headers</option>
+            <option value="genuine">Genuine and confirmed</option>
+          </select>
+          <button type="button" class="btn btn-quiet" id="clear-form">Clear the form</button>
+        </div>
+      </form>
+
+      <section class="panel" id="results" aria-labelledby="results-title">
+        <div class="panel-head"><h2 id="results-title">Decision</h2></div>
+        <div id="results-body">
+          <div class="empty">
+            <p>Run the gate to see what to do with this notice, and why.</p>
+            <p><button type="button" class="btn btn-secondary" data-example="poisoned">Try the poisoned-list example</button></p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ===================== Settings ===================== -->
+  <section id="view-settings" class="page" role="tabpanel" aria-labelledby="tab-settings" hidden>
+    <h1>Settings</h1>
+    <p class="lede">IOC Gate compares every notice with these details. The values here start as samples. Replace them with the details from the case file before you check real evidence.</p>
+    <form id="settings-form" class="panel" novalidate>
+      <fieldset>
+        <legend>The supplier <span class="ev" data-ev="supplier"></span></legend>
+        <div class="field"><label for="s-supplier">Supplier domains, one per line</label><textarea id="s-supplier" class="mono" rows="2" spellcheck="false"></textarea></div>
+        <div class="row-2 field">
+          <div><label for="s-org">Supplier organization name</label><input type="text" id="s-org" autocomplete="off"></div>
+          <div><label for="s-before">Sender domain must be registered before</label><input type="date" id="s-before"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Harbor &amp; Finch <span class="ev" data-ev="ranges"></span></legend>
+        <div class="field"><label for="s-ourdomains">Our domains, one per line</label><textarea id="s-ourdomains" class="mono" rows="2" spellcheck="false"></textarea></div>
+        <div class="field"><label for="s-ranges">Our network ranges: a range, then a name, one per line</label><textarea id="s-ranges" class="mono" rows="3" spellcheck="false"></textarea></div>
+        <div class="field"><label class="check"><input type="checkbox" id="s-private"> Also protect private and reserved ranges (10.0.0.0/8, 192.168.0.0/16 and similar)</label></div>
+        <div class="field"><label for="s-protected">Services we must never block, one domain per line</label><textarea id="s-protected" class="mono" rows="2" spellcheck="false"></textarea></div>
+      </fieldset>
+      <fieldset>
+        <legend>Look-alike detection</legend>
+        <div class="row-2">
+          <div><label for="s-distance">Flag names this many characters away from the supplier’s</label><input type="number" id="s-distance" min="1" max="3" step="1"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Evidence labels</legend>
+        <p class="hint" style="margin:0 0 10px">These IDs appear next to each finding. Check them against the case file.</p>
+        <div class="row-2">
+          <div><label for="e-notice">Outside notice</label><input type="text" id="e-notice"></div>
+          <div><label for="e-list">Indicator list</label><input type="text" id="e-list"></div>
+          <div class="field"><label for="e-supplier">Supplier records</label><input type="text" id="e-supplier"></div>
+          <div class="field"><label for="e-registration">Domain registration</label><input type="text" id="e-registration"></div>
+          <div class="field"><label for="e-logs">Our logs</label><input type="text" id="e-logs"></div>
+          <div class="field"><label for="e-contact">Contract contact</label><input type="text" id="e-contact"></div>
+          <div class="field"><label for="e-ranges">Our network ranges</label><input type="text" id="e-ranges"></div>
+        </div>
+      </fieldset>
+      <div id="settings-error" class="form-error" role="alert" hidden></div>
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">Save settings</button>
+        <button type="button" class="btn btn-secondary" id="settings-export">Export settings</button>
+        <button type="button" class="btn btn-secondary" id="settings-import-btn">Import settings</button>
+        <input type="file" id="settings-import" accept="application/json,.json" hidden>
+        <button type="button" class="btn btn-quiet" id="settings-reset">Restore the sample settings</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ===================== Audit log ===================== -->
+  <section id="view-audit" class="page" role="tabpanel" aria-labelledby="tab-audit" hidden>
+    <h1>Audit log</h1>
+    <p class="lede">Every run is recorded here so you can show your working. The log is kept in this browser only.</p>
+    <div class="panel">
+      <div class="table-wrap" id="audit-table"></div>
+      <div class="actions">
+        <button type="button" class="btn btn-secondary" id="audit-csv">Download as CSV</button>
+        <button type="button" class="btn btn-secondary" id="audit-json">Download as JSON</button>
+        <button type="button" class="btn btn-quiet" id="audit-clear">Clear the log</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== How it works ===================== -->
+  <section id="view-about" class="page" role="tabpanel" aria-labelledby="tab-about" hidden>
+    <h1>How IOC Gate decides</h1>
+    <p class="lede">Outside threat intel can be genuine, mistaken or an attack in its own right. IOC Gate checks it before anyone blocks anything.</p>
+    <div class="panel prose">
+      <h2>Three checks, in order</h2>
+      <ol>
+        <li><strong>Sender check.</strong> The From, Reply-To and Return-Path addresses and every link are compared with the supplier’s real domain. Look-alikes, forged headers and replies that leave the supplier’s domain fail. New, privacy-hidden or wrongly owned domains count against the sender.</li>
+        <li><strong>Harm check.</strong> Every entry is tested against our own network ranges, our domains, the supplier’s domain and services we must never block. One harmful entry puts the whole list on hold.</li>
+        <li><strong>Corroboration.</strong> An indicator is only blocked when it shows up in our own logs and the contract contact has confirmed the notice out-of-band. Everything else stays on watch.</li>
+      </ol>
+      <h2>The four decisions</h2>
+      <dl class="outcomes">
+        <dt style="color:var(--red)">REJECT</dt><dd>The notice fails the sender check. Nothing is acted on; the indicators are kept as evidence.</dd>
+        <dt style="color:var(--amber)">QUARANTINE</dt><dd>At least one entry points at us. The whole list is held for review.</dd>
+        <dt style="color:var(--teal)">ACCEPT_WATCH</dt><dd>Nothing is harmful, but nothing is confirmed. Indicators are watched, not blocked.</dd>
+        <dt style="color:var(--green)">ACCEPT_ENFORCE</dt><dd>Some indicators are seen in our logs and confirmed. Only those go on the blocklist.</dd>
+      </dl>
+      <h2>What it never does</h2>
+      <ul>
+        <li>It never connects to the internet. There are no live WHOIS lookups, and links are never opened.</li>
+        <li>It never sends what you paste anywhere. Everything runs in this page.</li>
+        <li>It never puts an indicator on the blocklist without two confirmations.</li>
+      </ul>
+      <h2>Known limits</h2>
+      <ul>
+        <li>Unicode look-alikes beyond its built-in character list can slip past the sender check. The harm and corroboration checks still apply.</li>
+        <li>A hacked but genuine supplier mailbox passes the sender check, so the other two checks have to catch it.</li>
+        <li>Registration data you enter may be out of date. Confirm with the contract contact.</li>
+        <li>Watching first means a real, urgent threat waits for confirmation.</li>
+      </ul>
+      <h2>Self-test</h2>
+      <p>Runs the four examples with the sample settings and compares each decision with the expected one.</p>
+      <p style="margin-top:12px"><button type="button" class="btn btn-secondary" id="selftest-run">Run the self-test</button></p>
+      <div id="selftest-out" class="table-wrap" style="margin-top:12px"></div>
+      <h2>About this prototype</h2>
+      <p>Built for CRIMEATHON’26, Case File CR-26-047, with AI assistance (Claude). The examples use reserved test domains (.example) and documentation IP ranges. They are not case evidence.</p>
+    </div>
+  </section>
+</main>
+
+<footer>IOC Gate prototype. It runs entirely in your browser, and nothing you enter is sent anywhere.</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- ================================================================
+     Gate logic: pure functions, no page access. Also used by tests.
+     ================================================================ -->
+<script id="gate-logic">
+(function (root) {
+  "use strict";
+
+  const DEFAULT_CONFIG = {
+    supplierDomains: ["kestrel-it.example"],
+    supplierOrg: "Kestrel IT Services",
+    registeredBefore: "2024-06-01",
+    ourDomains: ["harborfinch.example"],
+    ourRanges: [
+      { cidr: "172.16.0.0/16", label: "the Harbor & Finch office network" },
+      { cidr: "10.20.4.0/24", label: "the Tally Bridge private link" },
+    ],
+    protectPrivate: true,
+    protectedServices: [],
+    lookalikeDistance: 2,
+    evidence: { notice: "E12, E16", list: "E17", supplier: "E04, E07, E08", registration: "E20", logs: "E01, E05, E15, E18", contact: "E08", ranges: "Case file" },
+  };
+
+  // Sample notices. Reserved test domains and documentation IP ranges only.
+  const SAMPLES = {
+    lookalike: {
+      name: "Look-alike sender", expect: "REJECT",
+      from: "Kestrel IT Security <alerts@kestrel-it-security.example>",
+      replyTo: "alerts@kestrel-it-security.example",
+      returnPath: "bounce@kestrel-it-security.example",
+      auth: { spf: "none", dkim: "none", dmarc: "none" },
+      links: "https://kestrel-it-security.example/advisory/2026-08",
+      reg: { created: "2026-08-19", registrant: "Redacted for privacy", privacy: true },
+      indicators: "203.0.113.45\n198.51.100.0/24\nupdate-check[.]example",
+      logs: "", confirmed: false, confirmNote: "",
+    },
+    poisoned: {
+      name: "Poisoned list", expect: "QUARANTINE",
+      from: "Kestrel IT <security@kestrel-it.example>",
+      replyTo: "security@kestrel-it.example",
+      returnPath: "bounces@mail.kestrel-it.example",
+      auth: { spf: "pass", dkim: "pass", dmarc: "pass" },
+      links: "https://portal.kestrel-it.example/advisories/ka-2026-031",
+      reg: { created: "2014-03-11", registrant: "Kestrel IT Services Ltd", privacy: false },
+      indicators: "203.0.113.77\n10.20.4.17\n172.16.8.0/24\nhxxp://malware-drop[.]example/payload",
+      logs: "", confirmed: false, confirmNote: "",
+    },
+    forged: {
+      name: "Forged headers", expect: "REJECT",
+      from: "Kestrel IT <security@kestrel-it.example>",
+      replyTo: "kestrel.helpdesk@freemail.example",
+      returnPath: "bounce@bulk-sender.example",
+      auth: { spf: "fail", dkim: "none", dmarc: "fail" },
+      links: "https://kestrel-it.example.secure-login.example/reset",
+      reg: { created: "", registrant: "", privacy: false },
+      indicators: "192.0.2.10",
+      logs: "", confirmed: false, confirmNote: "",
+    },
+    genuine: {
+      name: "Genuine and confirmed", expect: "ACCEPT_ENFORCE",
+      from: "Kestrel IT <security@kestrel-it.example>",
+      replyTo: "security@kestrel-it.example",
+      returnPath: "bounces@mail.kestrel-it.example",
+      auth: { spf: "pass", dkim: "pass", dmarc: "pass" },
+      links: "https://portal.kestrel-it.example/advisories/ka-2026-032",
+      reg: { created: "2014-03-11", registrant: "Kestrel IT Services Ltd", privacy: false },
+      indicators: "203.0.113.77\n198.51.100.23\nbad-cdn.example",
+      logs: "2026-08-27T22:14:05Z FW ALLOW tcp 172.16.4.23:51522 -> 203.0.113.77:443\n2026-08-27T22:14:09Z FW ALLOW tcp 172.16.4.23:51523 -> 203.0.113.77:443\n2026-08-28T07:02:41Z DNS query from 172.16.4.40 for intranet.harborfinch.example",
+      confirmed: true, confirmNote: "Called the account manager on the number in the contract",
+    },
+  };
+
+  const RESERVED_V4 = [
+    ["10.0.0.0/8", "private range"], ["172.16.0.0/12", "private range"], ["192.168.0.0/16", "private range"],
+    ["127.0.0.0/8", "loopback range"], ["169.254.0.0/16", "link-local range"], ["100.64.0.0/10", "shared address range"],
+    ["0.0.0.0/8", "reserved range"], ["224.0.0.0/4", "multicast range"], ["255.255.255.255/32", "broadcast address"],
+  ];
+  const MULTI_SUFFIX = new Set(["co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au", "co.in", "net.in", "org.in", "gov.in", "ac.in", "co.nz", "co.jp", "com.br", "com.sg", "com.my", "co.za"]);
+
+  // ---------- small helpers ----------
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const lines = (t) => String(t || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const plural = (n, one, many) => (n === 1 ? one : many);
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function refang(s) {
+    return String(s)
+      .replace(/hxxp/gi, "http").replace(/\[\.\]|\(\.\)|\{\.\}|\[dot\]/gi, ".")
+      .replace(/\[:\]/g, ":").replace(/\[@\]|\[at\]/gi, "@");
+  }
+  function joinReasons(list) {
+    if (list.length <= 1) return list.join("");
+    return list.slice(0, -1).join(", ") + " and " + list[list.length - 1];
+  }
+  function sameOrg(a, b) {
+    const norm = (s) => String(s).toLowerCase().replace(/&/g, "and").replace(/\b(ltd|limited|inc|llc|llp|pvt|private|plc|co|corp|corporation|company)\b/g, "").replace(/[^a-z0-9]/g, "");
+    const x = norm(a), y = norm(b);
+    return !!x && !!y && (x.includes(y) || y.includes(x));
+  }
+
+  // ---------- IPv4 ----------
+  function ipToInt(ip) {
+    const p = ip.split(".");
+    if (p.length !== 4) return null;
+    let n = 0;
+    for (const part of p) {
+      if (!/^\d{1,3}$/.test(part)) return null;
+      const v = Number(part);
+      if (v > 255) return null;
+      n = n * 256 + v;
+    }
+    return n;
+  }
+  function parseCidr(s) {
+    const [ip, bitsRaw] = String(s).trim().split("/");
+    const base = ipToInt(ip || "");
+    const bits = bitsRaw === undefined ? 32 : Number(bitsRaw);
+    if (base === null || !Number.isInteger(bits) || bits < 0 || bits > 32) return null;
+    const size = Math.pow(2, 32 - bits);
+    const start = Math.floor(base / size) * size;
+    return { start, end: start + size - 1, bits };
+  }
+
+  // ---------- Punycode (RFC 3492) decoding, for spotting Unicode look-alikes ----------
+  function punyDecode(input) {
+    const base = 36, tMin = 1, tMax = 26, skew = 38, damp = 700;
+    const output = [];
+    let n = 128, i = 0, bias = 72;
+    let basic = input.lastIndexOf("-");
+    if (basic < 0) basic = 0;
+    for (let j = 0; j < basic; j++) output.push(input.charCodeAt(j));
+    const digit = (c) => (c - 48 < 10 ? c - 22 : c - 65 < 26 ? c - 65 : c - 97 < 26 ? c - 97 : base);
+    const adapt = (delta, numPoints, first) => {
+      delta = first ? Math.floor(delta / damp) : delta >> 1;
+      delta += Math.floor(delta / numPoints);
+      let k = 0;
+      while (delta > ((base - tMin) * tMax) >> 1) { delta = Math.floor(delta / (base - tMin)); k += base; }
+      return k + Math.floor(((base - tMin + 1) * delta) / (delta + skew));
+    };
+    for (let idx = basic > 0 ? basic + 1 : 0; idx < input.length;) {
+      const oldi = i;
+      for (let w = 1, k = base; ; k += base) {
+        if (idx >= input.length) throw new Error("bad punycode");
+        const d = digit(input.charCodeAt(idx++));
+        if (d >= base) throw new Error("bad punycode");
+        i += d * w;
+        const t = k <= bias ? tMin : k >= bias + tMax ? tMax : k - bias;
+        if (d < t) break;
+        w *= base - t;
+      }
+      bias = adapt(i - oldi, output.length + 1, oldi === 0);
+      n += Math.floor(i / (output.length + 1));
+      i %= output.length + 1;
+      output.splice(i++, 0, n);
+    }
+    return String.fromCodePoint(...output);
+  }
+  function toUnicodeHost(host) {
+    return host.split(".").map((l) => {
+      if (!l.startsWith("xn--")) return l;
+      try { return punyDecode(l.slice(4)); } catch (e) { return l; }
+    }).join(".");
+  }
+  function hostFromAny(raw) {
+    let s = refang(String(raw || "").trim());
+    if (!s) return null;
+    const angle = s.match(/<([^>]+)>/);
+    if (angle) s = angle[1].trim();
+    s = s.replace(/^mailto:/i, "");
+    if (/^[^\s@/]+@[^\s@/]+$/.test(s)) s = s.split("@").pop();
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) {
+      try { s = new URL(s).hostname; } catch (e) { return null; }
+    } else {
+      s = s.split(/[/?#]/)[0].replace(/:\d+$/, "");
+    }
+    s = s.replace(/^\[|\]$/g, "").replace(/\.+$/, "").toLowerCase();
+    if (!s || /\s/.test(s)) return null;
+    let ascii = s;
+    if (!/^[\x00-\x7f]*$/.test(s)) {
+      try { ascii = new URL("http://" + s).hostname; } catch (e) { return null; }
+    }
+    if (!/^[a-z0-9.-]+$/.test(ascii)) return null;
+    return { ascii, unicode: toUnicodeHost(ascii) };
+  }
+  function splitDomain(host) {
+    const parts = host.split(".");
+    if (parts.length < 2) return { registrable: host, label: host, suffix: "" };
+    const two = parts.slice(-2).join(".");
+    const sufLen = MULTI_SUFFIX.has(two) && parts.length >= 3 ? 2 : 1;
+    const reg = parts.slice(-(sufLen + 1));
+    return { registrable: reg.join("."), label: reg[0], suffix: reg.slice(1).join(".") };
+  }
+  const onDomain = (host, d) => host === d || host.endsWith("." + d);
+
+  // ---------- Look-alike detection ----------
+  const CONFUSABLE = {
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "х": "x", "у": "y", "і": "i", "ј": "j", "ѕ": "s", "ԁ": "d", "һ": "h", "ӏ": "l", "ԛ": "q", "ԝ": "w",
+    "ο": "o", "α": "a", "ν": "v", "ρ": "p", "τ": "t", "κ": "k", "ι": "i", "ε": "e",
+    "0": "o", "1": "l", "i": "l", "|": "l", "!": "l", "5": "s", "$": "s", "3": "e", "@": "a", "4": "a", "7": "t", "8": "b", "9": "g",
+  };
+  function skeleton(s) {
+    const t = String(s).normalize("NFKC").toLowerCase().replace(/rn/g, "m").replace(/vv/g, "w").replace(/cl/g, "d");
+    return Array.from(t).map((ch) => CONFUSABLE[ch] || ch).join("");
+  }
+  function editDistance(a, b) {
+    const m = a.length, n = b.length;
+    const d = Array.from({ length: m + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= n; j++) d[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+    return d[m][n];
+  }
+  function compareToSupplier(h, suppliers, maxDist) {
+    for (const s of suppliers) if (onDomain(h.ascii, s)) return { kind: "match", supplier: s };
+    const hd = splitDomain(h.ascii), hu = splitDomain(h.unicode);
+    for (const s of suppliers) {
+      const sd = splitDomain(s);
+      const r = [];
+      if (h.ascii.includes("xn--") && skeleton(hu.label) === skeleton(sd.label)) r.push("uses look-alike Unicode characters in the supplier’s name");
+      if (hd.label === sd.label && hd.suffix !== sd.suffix) r.push(`keeps the name but changes the ending to .${hd.suffix}`);
+      if (h.ascii.startsWith(s + ".") || h.ascii.includes("." + s + ".")) r.push("puts the supplier’s domain in front of a different domain");
+      const hl = hd.label, sl = sd.label;
+      if (hl !== sl) {
+        if (sl.length >= 4 && hl.includes(sl)) r.push("adds extra words to the supplier’s name");
+        if (hl.replace(/-/g, "") === sl.replace(/-/g, "")) r.push("only moves the hyphens in the supplier’s name");
+        if (skeleton(hl) === skeleton(sl)) r.push("swaps in look-alike characters, such as 1 for l or rn for m");
+        const dist = editDistance(hl, sl);
+        if (sl.length >= 5 && dist <= maxDist && !r.length) r.push(`is ${dist} ${plural(dist, "character", "characters")} away from the supplier’s name`);
+      }
+      if (r.length) return { kind: "lookalike", supplier: s, reasons: Array.from(new Set(r)) };
+    }
+    return { kind: "unrelated" };
+  }
+
+  // ---------- Stage 1: sender check ----------
+  function senderCheck(input, cfg) {
+    const ev = cfg.evidence, sup = cfg.supplierDomains, f = [];
+    const dist = cfg.lookalikeDistance;
+    let fromKind = "missing";
+    const fromH = hostFromAny(input.from);
+    if (!String(input.from || "").trim()) {
+      f.push({ status: "warn", text: "No From address was given, so the sender can’t be verified.", ev: ev.notice });
+    } else if (!fromH) {
+      f.push({ status: "warn", text: "The From address couldn’t be read, so the sender can’t be verified.", ev: ev.notice });
+    } else {
+      const c = compareToSupplier(fromH, sup, dist);
+      fromKind = c.kind;
+      if (c.kind === "match") f.push({ status: "pass", text: `From address is on the supplier’s domain (${fromH.unicode}).`, ev: ev.supplier });
+      else if (c.kind === "lookalike") f.push({ status: "fail", text: `From address ${fromH.unicode} imitates ${c.supplier}: it ${joinReasons(c.reasons)}.`, ev: ev.supplier });
+      else f.push({ status: "warn", text: `From address ${fromH.unicode} isn’t on the supplier’s domain, so the gate can’t verify who sent this.`, ev: ev.supplier });
+    }
+    for (const [key, label] of [["replyTo", "Reply-To"], ["returnPath", "Return-Path"]]) {
+      if (!String(input[key] || "").trim()) continue;
+      const h = hostFromAny(input[key]);
+      if (!h) { f.push({ status: "warn", text: `${label} couldn’t be read.`, ev: ev.notice }); continue; }
+      const c = compareToSupplier(h, sup, dist);
+      if (c.kind === "match") f.push({ status: "pass", text: `${label} stays on the supplier’s domain (${h.unicode}).`, ev: ev.supplier });
+      else if (c.kind === "lookalike") f.push({ status: "fail", text: `${label} ${h.unicode} imitates ${c.supplier}: it ${joinReasons(c.reasons)}.`, ev: ev.supplier });
+      else if (fromKind === "match") f.push({ status: "fail", text: `${label} points to ${h.unicode}, away from the supplier’s domain. ${key === "replyTo" ? "Replies" : "Bounces"} would go somewhere else.`, ev: ev.notice });
+      else f.push({ status: "warn", text: `${label} uses ${h.unicode}, which isn’t the supplier’s domain.`, ev: ev.notice });
+    }
+    const auth = input.auth || {};
+    const keys = ["spf", "dkim", "dmarc"];
+    const failed = keys.filter((k) => auth[k] === "fail" || auth[k] === "softfail");
+    const passed = keys.filter((k) => auth[k] === "pass");
+    if (failed.length) f.push({ status: "fail", text: `${failed.map((k) => k.toUpperCase()).join(" and ")} failed, so the headers may be forged.`, ev: ev.notice });
+    else if (passed.length === 3) f.push({ status: "pass", text: "SPF, DKIM and DMARC all passed.", ev: ev.notice });
+    else if (passed.length) f.push({ status: "info", text: `${passed.map((k) => k.toUpperCase()).join(" and ")} passed. The other results weren’t given.`, ev: ev.notice });
+    else f.push({ status: "info", text: "No SPF, DKIM or DMARC results were given, so an exact-domain forgery can’t be ruled out.", ev: ev.notice });
+    const links = lines(input.links);
+    for (const raw of links) {
+      const h = hostFromAny(raw);
+      if (!h) { f.push({ status: "warn", text: `The link “${raw}” couldn’t be read.`, ev: ev.notice }); continue; }
+      const c = compareToSupplier(h, sup, dist);
+      if (c.kind === "match") f.push({ status: "pass", text: `Link goes to the supplier’s domain (${h.unicode}).`, ev: ev.supplier });
+      else if (c.kind === "lookalike") f.push({ status: "fail", text: `Link to ${h.unicode} imitates ${c.supplier}: it ${joinReasons(c.reasons)}.`, ev: ev.supplier });
+      else f.push({ status: "info", text: `Link leaves the supplier’s domain (${h.unicode}). Don’t open it from this notice.`, ev: ev.notice });
+    }
+    const reg = input.reg || {};
+    const regFlags = [];
+    if (reg.created && cfg.registeredBefore && reg.created >= cfg.registeredBefore) regFlags.push(`The sender’s domain was registered on ${reg.created}, after ${cfg.registeredBefore}.`);
+    if (reg.privacy) regFlags.push("The domain’s owner is hidden by a privacy service.");
+    if (reg.registrant && cfg.supplierOrg && !sameOrg(reg.registrant, cfg.supplierOrg)) regFlags.push(`The domain is registered to “${reg.registrant}”, not ${cfg.supplierOrg}.`);
+    if (reg.created || reg.registrant || reg.privacy) {
+      if (regFlags.length) {
+        const st = fromKind === "match" ? "warn" : "fail";
+        regFlags.forEach((t) => f.push({ status: st, text: fromKind === "match" ? t + " Confirm with the contract contact." : t, ev: ev.registration }));
+      } else {
+        f.push({ status: "pass", text: `Registration looks right${reg.created ? ": registered " + reg.created : ""}${reg.registrant ? ", owned by " + reg.registrant : ""}.`, ev: ev.registration });
+      }
+    } else {
+      f.push({ status: "info", text: "No registration data was given for the sender’s domain.", ev: ev.registration });
+    }
+    let status = "pass";
+    if (f.some((x) => x.status === "fail")) status = "fail";
+    else if (fromKind !== "match" || f.some((x) => x.status === "warn")) status = "warn";
+    return { status, fromKind, findings: f };
+  }
+
+  // ---------- Indicators ----------
+  function classify(raw) {
+    const s0 = refang(String(raw).replace(/\s+#.*$/, "").trim());
+    if (!s0 || s0.startsWith("#")) return null;
+    const s = s0.replace(/^\[|\]$/g, "");
+    if (/^([a-f0-9]{32}|[a-f0-9]{40}|[a-f0-9]{64})$/i.test(s)) return { raw, type: "file hash", value: s.toLowerCase() };
+    if (/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(s)) { const r = parseCidr(s); return r ? { raw, type: "IP range", value: s, range: r } : { raw, type: "invalid", value: s }; }
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) { const n = ipToInt(s); return n === null ? { raw, type: "invalid", value: s } : { raw, type: "IP address", value: s, range: { start: n, end: n, bits: 32 } }; }
+    if (s.includes(":") && /^[0-9a-f:]+(\/\d{1,3})?$/i.test(s)) return { raw, type: "IPv6 address", value: s.toLowerCase() };
+    const h = hostFromAny(s);
+    if (h && h.ascii.includes(".")) {
+      if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h.ascii)) {
+        const n = ipToInt(h.ascii);
+        if (n !== null) return { raw, type: "URL", value: s, host: null, range: { start: n, end: n, bits: 32 }, ip: h.ascii };
+      }
+      const type = /^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? "URL" : s.includes("@") ? "email address" : "domain";
+      return { raw, type, value: type === "domain" ? h.ascii : s, host: h.ascii, display: h.unicode };
+    }
+    return { raw, type: "invalid", value: s };
+  }
+  function protectedRanges(cfg) {
+    const out = [];
+    for (const r of cfg.ourRanges) { const c = parseCidr(r.cidr); if (c) out.push(Object.assign({ cidr: r.cidr, label: r.label, ours: true }, c)); }
+    if (cfg.protectPrivate) for (const [cidr, label] of RESERVED_V4) out.push(Object.assign({ cidr, label, ours: false }, parseCidr(cidr)));
+    return out;
+  }
+
+  // ---------- Stage 2: harm check ----------
+  function harmCheck(indicators, cfg) {
+    const ev = cfg.evidence, ranges = protectedRanges(cfg), hits = [];
+    for (const ind of indicators) {
+      if (ind.range) {
+        const r = ranges.find((p) => ind.range.start <= p.end && ind.range.end >= p.start);
+        if (r) { ind.harm = r.ours ? `${r.label} (${r.cidr})` : `a ${r.label} (${r.cidr})`; ind.harmEv = r.ours ? ev.ranges : "Reserved ranges"; }
+      } else if (ind.type === "IPv6 address") {
+        if (cfg.protectPrivate && /^(::1?(\/\d+)?$|f[cd][0-9a-f]{0,2}:|fe[89ab][0-9a-f]?:)/i.test(ind.value)) { ind.harm = "a private or local IPv6 address"; ind.harmEv = "Reserved ranges"; }
+      } else if (ind.host) {
+        const own = cfg.ourDomains.find((d) => onDomain(ind.host, d));
+        const sup = cfg.supplierDomains.find((d) => onDomain(ind.host, d));
+        const prot = cfg.protectedServices.find((d) => onDomain(ind.host, d));
+        if (own) { ind.harm = `our own domain (${own})`; ind.harmEv = ev.ranges; }
+        else if (sup) { ind.harm = `the supplier’s real domain (${sup})`; ind.harmEv = ev.supplier; }
+        else if (prot) { ind.harm = `a service we must never block (${prot})`; ind.harmEv = "Settings"; }
+      }
+      if (ind.harm) hits.push(ind);
+    }
+    return { status: hits.length ? "fail" : "pass", hits };
+  }
+
+  // ---------- Stage 3: corroboration ----------
+  function logIps(text) {
+    const out = [];
+    for (const line of String(text || "").split(/\r?\n/)) {
+      const m = line.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g);
+      if (m) for (const ip of m) { const n = ipToInt(ip); if (n !== null) out.push({ n, line: line.trim() }); }
+    }
+    return out;
+  }
+  function seenInLogs(ind, text, ips) {
+    if (!text) return { count: 0, sample: null };
+    if (ind.range) {
+      let count = 0, sample = null;
+      for (const x of ips) if (x.n >= ind.range.start && x.n <= ind.range.end) { count++; if (!sample) sample = x.line; }
+      return { count, sample };
+    }
+    const needle = ind.host || ind.value;
+    if (!needle) return { count: 0, sample: null };
+    const re = new RegExp("(?:^|[^a-z0-9-])(?:[a-z0-9-]+\\.)*" + escapeRe(needle) + "(?![a-z0-9-])", "gi");
+    let count = 0, sample = null;
+    for (const line of String(text).split(/\r?\n/)) {
+      const m = line.match(re);
+      if (m) { count += m.length; if (!sample) sample = line.trim(); }
+    }
+    return { count, sample };
+  }
+
+  // ---------- The decision ----------
+  function runGate(input, cfgIn) {
+    const cfg = cfgIn || DEFAULT_CONFIG;
+    const ev = cfg.evidence;
+    const indicators = lines(input.indicators).map(classify).filter(Boolean);
+    const valid = indicators.filter((i) => i.type !== "invalid");
+    const s1 = senderCheck(input, cfg);
+    const s2 = harmCheck(valid, cfg);
+    const ips = logIps(input.logs);
+    valid.forEach((ind) => { const r = seenInLogs(ind, input.logs, ips); ind.logCount = r.count; ind.logSample = r.sample; });
+    const unverified = s1.status !== "pass";
+    const enforce = [];
+    for (const ind of indicators) {
+      if (ind.type === "invalid") { ind.decision = "ignored"; ind.reason = "Not a recognizable indicator."; ind.ev = ev.list; continue; }
+      if (s1.status === "fail") { ind.decision = "evidence"; ind.reason = ind.harm ? `Rejected notice. This entry also points at ${ind.harm}, which suggests the list was built to hurt us.` : "Rejected notice. Kept for the investigation, never blocked."; ind.ev = ev.list; continue; }
+      if (s2.hits.length) { ind.decision = "held"; ind.reason = ind.harm ? `Points at ${ind.harm}.` : "Held with the rest of the list, because the list contains a harmful entry."; ind.ev = ind.harm ? ind.harmEv : ev.list; continue; }
+      const seen = ind.logCount > 0;
+      if (seen && input.confirmed && !unverified) { ind.decision = "block"; ind.reason = `Seen ${ind.logCount} ${plural(ind.logCount, "time", "times")} in our logs, and the notice is confirmed out-of-band.`; ind.ev = `${ev.logs}; ${ev.contact}`; enforce.push(ind); }
+      else if (seen && unverified) { ind.decision = "watch"; ind.reason = `Seen ${ind.logCount} ${plural(ind.logCount, "time", "times")} in our logs, but the sender isn’t verified.`; ind.ev = ev.logs; }
+      else if (seen) { ind.decision = "watch"; ind.reason = `Seen ${ind.logCount} ${plural(ind.logCount, "time", "times")} in our logs. Waiting for the contract contact to confirm.`; ind.ev = `${ev.logs}; ${ev.contact}`; }
+      else { ind.decision = "watch"; ind.reason = unverified ? "Not seen in our logs, and the sender isn’t verified." : "Not seen in our logs."; ind.ev = ev.logs; }
+    }
+    let outcome, summary, s3;
+    if (s1.status === "fail") {
+      outcome = "REJECT"; s3 = "skip";
+      summary = "This notice doesn’t check out as coming from the supplier. Don’t act on it. Its indicators are kept as evidence only.";
+    } else if (s2.hits.length) {
+      outcome = "QUARANTINE"; s3 = "skip";
+      summary = `${s2.hits.length} ${plural(s2.hits.length, "entry points", "entries point")} at our own network or at domains we rely on. The whole list is held for review.`;
+    } else if (enforce.length) {
+      outcome = "ACCEPT_ENFORCE"; s3 = "pass";
+      summary = `${enforce.length} of ${valid.length} ${plural(valid.length, "indicator", "indicators")} ${plural(enforce.length, "is", "are")} in our logs and confirmed. Only ${plural(enforce.length, "that one goes", "those go")} on the blocklist; the rest stay on watch.`;
+    } else {
+      outcome = "ACCEPT_WATCH"; s3 = "warn";
+      summary = !valid.length ? "There are no indicators to act on." : unverified
+        ? "Nothing here points at us, but the sender isn’t verified. Watch these indicators; don’t block them."
+        : "Nothing here points at us, but nothing is confirmed yet. Watch these indicators; don’t block them.";
+    }
+    return {
+      outcome, summary, indicators, enforce,
+      stages: { sender: s1, harm: Object.assign({ shown: s1.status === "fail" ? "skip" : s2.status }, s2), corroboration: { status: s3, confirmed: !!input.confirmed } },
+    };
+  }
+
+  function emptyInput() {
+    return { from: "", replyTo: "", returnPath: "", auth: { spf: "", dkim: "", dmarc: "" }, links: "", reg: { created: "", registrant: "", privacy: false }, indicators: "", logs: "", confirmed: false, confirmNote: "" };
+  }
+  function selfTest() {
+    return Object.entries(SAMPLES).map(([key, s]) => {
+      const got = runGate(clone(s), DEFAULT_CONFIG).outcome;
+      return { key, name: s.name, expected: s.expect, got, ok: got === s.expect };
+    });
+  }
+
+  root.IOCGate = { DEFAULT_CONFIG, SAMPLES, runGate, selfTest, classify, hostFromAny, compareToSupplier, parseCidr, emptyInput, clone, lines };
+})(typeof window !== "undefined" ? window : globalThis);
+</script>
+
+<!-- ================================================================
+     Page behaviour
+     ================================================================ -->
+<script>
+(function () {
+  "use strict";
+  const G = window.IOCGate;
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const KEY_CFG = "iocgate.settings.v1", KEY_LOG = "iocgate.audit.v1";
+
+  // ---------- storage (may be unavailable when opened from disk in some browsers) ----------
+  function load(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } }
+  function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch (e) { return false; } }
+
+  let cfg = Object.assign(G.clone(G.DEFAULT_CONFIG), load(KEY_CFG, {}));
+  cfg.evidence = Object.assign(G.clone(G.DEFAULT_CONFIG.evidence), cfg.evidence || {});
+  let audit = load(KEY_LOG, []);
+  let last = null;
+
+  // ---------- toast ----------
+  let toastTimer;
+  function toast(msg) {
+    const t = $("#toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  // ---------- tabs ----------
+  const tabs = $$('[role="tab"]');
+  function showTab(id) {
+    tabs.forEach((t) => {
+      const on = t.id === id;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      $("#" + t.getAttribute("aria-controls")).hidden = !on;
+    });
+    $("#lane").hidden = id !== "tab-check";
+    if (id === "tab-audit") renderAudit();
+    if (id === "tab-settings") fillSettings();
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => showTab(t.id));
+    t.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      next.focus(); showTab(next.id);
+    });
+  });
+
+  // ---------- evidence labels next to form sections ----------
+  function paintEvidenceLabels() {
+    $$("[data-ev]").forEach((el) => { el.textContent = cfg.evidence[el.dataset.ev] || ""; el.hidden = !el.textContent; });
+  }
+
+  // ---------- notice form ----------
+  function readNotice() {
+    return {
+      from: $("#f-from").value, replyTo: $("#f-replyto").value, returnPath: $("#f-returnpath").value,
+      auth: { spf: $("#f-spf").value, dkim: $("#f-dkim").value, dmarc: $("#f-dmarc").value },
+      links: $("#f-links").value,
+      reg: { created: $("#f-created").value, registrant: $("#f-registrant").value.trim(), privacy: $("#f-privacy").checked },
+      indicators: $("#f-indicators").value, logs: $("#f-logs").value,
+      confirmed: $("#f-confirmed").checked, confirmNote: $("#f-confirmnote").value.trim(),
+    };
+  }
+  function writeNotice(n) {
+    $("#f-from").value = n.from; $("#f-replyto").value = n.replyTo; $("#f-returnpath").value = n.returnPath;
+    $("#f-spf").value = n.auth.spf || ""; $("#f-dkim").value = n.auth.dkim || ""; $("#f-dmarc").value = n.auth.dmarc || "";
+    $("#f-links").value = n.links; $("#f-created").value = n.reg.created || ""; $("#f-registrant").value = n.reg.registrant || "";
+    $("#f-privacy").checked = !!n.reg.privacy; $("#f-indicators").value = n.indicators; $("#f-logs").value = n.logs;
+    $("#f-confirmed").checked = !!n.confirmed; $("#f-confirmnote").value = n.confirmNote || "";
+  }
+  function loadExample(key) {
+    const s = G.SAMPLES[key];
+    if (!s) return;
+    writeNotice(G.clone(s));
+    $("#form-error").hidden = true;
+    const changed = JSON.stringify(cfg.supplierDomains) !== JSON.stringify(G.DEFAULT_CONFIG.supplierDomains);
+    toast(changed ? `Loaded “${s.name}”. It’s built for the sample settings, so results may differ.` : `Loaded the “${s.name}” example. It uses test data, not case evidence.`);
+  }
+  $("#example-picker").addEventListener("change", (e) => { loadExample(e.target.value); e.target.value = ""; });
+  $("#clear-form").addEventListener("click", () => { writeNotice(G.emptyInput()); resetLane(); renderEmpty(); toast("Form cleared"); });
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-example]");
+    if (b) { loadExample(b.dataset.example); runAndShow(); }
+  });
+  $("#notice-form").addEventListener("submit", (e) => { e.preventDefault(); runAndShow(); });
+
+  // ---------- running ----------
+  async function fingerprint(obj) {
+    try {
+      if (!window.crypto || !crypto.subtle) return null;
+      const data = new TextEncoder().encode(JSON.stringify(obj));
+      const buf = await crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (e) { return null; }
+  }
+  async function runAndShow() {
+    const input = readNotice();
+    if (!input.from.trim() && !G.lines(input.indicators).length) {
+      const err = $("#form-error");
+      err.textContent = "Add a From address or at least one indicator, then run the gate.";
+      err.hidden = false;
+      $("#f-from").focus();
+      return;
+    }
+    $("#form-error").hidden = true;
+    const result = G.runGate(input, cfg);
+    const fp = await fingerprint(input);
+    const ranAt = new Date();
+    last = { input, result, fp, ranAt, cfg: G.clone(cfg) };
+    audit.unshift({
+      time: ranAt.toISOString(), from: input.from || "(none)", outcome: result.outcome,
+      indicators: result.indicators.filter((i) => i.type !== "invalid").length, blocked: result.enforce.length, fingerprint: fp || "",
+    });
+    audit = audit.slice(0, 500);
+    save(KEY_LOG, audit);
+    renderResult(last);
+    animateLane(result);
+  }
+
+  // ---------- the lane ----------
+  const STAGE_TEXT = { pass: "Passed", warn: "Not verified", fail: "Failed", skip: "Not needed" };
+  function setStage(n, status, text) {
+    const li = $(`.stage[data-stage="${n}"]`);
+    li.classList.remove("is-pass", "is-warn", "is-fail", "is-skip");
+    if (status) li.classList.add("is-" + status);
+    li.querySelector(".node").textContent = status === "pass" ? "✓" : status === "fail" ? "✕" : status === "warn" ? "!" : String(n);
+    $("#stage-result-" + n).textContent = text || "";
+  }
+  function resetLane() {
+    [1, 2, 3].forEach((n) => setStage(n, null, ""));
+    const v = $("#verdict");
+    v.className = "verdict";
+    $("#verdict-word").textContent = "None yet";
+    $("#verdict-note").textContent = "Fill in a notice and run the gate.";
+  }
+  function animateLane(result) {
+    resetLane();
+    const st = result.stages;
+    const s2text = st.harm.shown === "skip" ? STAGE_TEXT.skip : st.harm.hits.length ? `${st.harm.hits.length} harmful ${st.harm.hits.length === 1 ? "entry" : "entries"}` : "Nothing harmful";
+    const s3text = st.corroboration.status === "skip" ? STAGE_TEXT.skip : result.enforce.length ? `${result.enforce.length} confirmed` : "Nothing confirmed";
+    const steps = [
+      () => setStage(1, st.sender.status, STAGE_TEXT[st.sender.status]),
+      () => setStage(2, st.harm.shown, s2text),
+      () => setStage(3, st.corroboration.status, s3text),
+      () => {
+        const v = $("#verdict");
+        v.className = "verdict v-" + result.outcome + (reduceMotion ? "" : " is-new");
+        $("#verdict-word").innerHTML = esc(result.outcome).replace(/_/g, "_<wbr>");
+        $("#verdict-note").textContent = noteFor(result);
+      },
+    ];
+    if (reduceMotion) { steps.forEach((f) => f()); return; }
+    steps.forEach((f, i) => setTimeout(f, i * 260));
+  }
+  function noteFor(r) {
+    const n = r.indicators.filter((i) => i.type !== "invalid").length;
+    if (r.outcome === "REJECT") return "Don’t act on this notice.";
+    if (r.outcome === "QUARANTINE") return "The whole list is on hold.";
+    if (r.outcome === "ACCEPT_ENFORCE") return `${r.enforce.length} of ${n} can be blocked.`;
+    return n ? `Watch ${n === 1 ? "this indicator" : "these " + n + " indicators"}.` : "No indicators to act on.";
+  }
+
+  // ---------- results ----------
+  const ICONS = {
+    pass: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2l2.2 2.2 4.8-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    fail: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    warn: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5v4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="6" cy="9.3" r="1" fill="currentColor"/></svg>',
+    info: '<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="2.9" r="1" fill="currentColor"/><path d="M6 5.3v4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  };
+  const STATUS_WORD = { pass: "Pass", warn: "Warning", fail: "Fail", info: "Note" };
+  const DECISION = { block: ["Block", "d-block"], watch: ["Watch", "d-watch"], held: ["Held", "d-held"], evidence: ["Evidence only", "d-evidence"], ignored: ["Ignored", "d-ignored"] };
+  const TAG = { pass: ["Passed", "t-pass"], warn: ["Not verified", "t-warn"], fail: ["Failed", "t-fail"], skip: ["Not needed", "t-skip"] };
+
+  function finding(f) {
+    return `<li><span class="ico i-${f.status}" title="${STATUS_WORD[f.status]}">${ICONS[f.status]}</span><span><span class="sr-only">${STATUS_WORD[f.status]}: </span>${esc(f.text)}</span>${f.ev ? `<span class="ev">${esc(f.ev)}</span>` : ""}</li>`;
+  }
+  function renderEmpty() {
+    $("#results-body").innerHTML = `<div class="empty"><p>Run the gate to see what to do with this notice, and why.</p><p><button type="button" class="btn btn-secondary" data-example="poisoned">Try the poisoned-list example</button></p></div>`;
+  }
+  function renderResult(run) {
+    const r = run.result, st = r.stages;
+    const valid = r.indicators.filter((i) => i.type !== "invalid");
+    const s1 = TAG[st.sender.status], s2 = TAG[st.harm.shown], s3 = TAG[st.corroboration.status];
+    let harmBody;
+    if (st.harm.hits.length) {
+      harmBody = `<ul class="findings">${st.harm.hits.map((h) => finding({ status: st.harm.shown === "skip" ? "info" : "fail", text: `${h.display || h.ip || h.value} points at ${h.harm}.`, ev: h.harmEv })).join("")}</ul>`;
+      if (st.harm.shown === "skip") harmBody = `<p class="note">The run stopped at the sender check. For the record:</p>` + harmBody;
+    } else if (st.harm.shown === "skip") {
+      harmBody = `<p class="note">The run stopped at the sender check, and no entry points at us.</p>`;
+    } else {
+      harmBody = `<ul class="findings">${finding({ status: "pass", text: valid.length ? `None of the ${valid.length} ${valid.length === 1 ? "entry points" : "entries point"} at our network, our domains or the supplier’s domain.` : "There were no indicators to test.", ev: run.cfg.evidence.ranges })}</ul>`;
+    }
+    let corrBody;
+    if (st.corroboration.status === "skip") corrBody = `<p class="note">Not needed, because an earlier check stopped the run.</p>`;
+    else {
+      const seen = valid.filter((i) => i.logCount > 0);
+      corrBody = `<ul class="findings">${finding({ status: seen.length ? "pass" : "info", text: seen.length ? `${seen.length} of ${valid.length} ${valid.length === 1 ? "indicator appears" : "indicators appear"} in our logs.` : (run.input.logs.trim() ? "None of the indicators appear in the logs you pasted." : "No logs were pasted, so nothing can be corroborated yet."), ev: run.cfg.evidence.logs })}${finding({ status: st.corroboration.confirmed ? "pass" : "info", text: st.corroboration.confirmed ? `The contract contact confirmed the notice out-of-band${run.input.confirmNote ? ": " + run.input.confirmNote : "."}` : "The notice hasn’t been confirmed out-of-band yet.", ev: run.cfg.evidence.contact })}</ul>`;
+    }
+    const rows = r.indicators.map((i) => {
+      const [word, cls] = DECISION[i.decision];
+      const shown = i.type === "domain" ? (i.display || i.value) : i.value;
+      return `<tr><td class="ind">${esc(shown)}${i.raw.trim() !== shown ? `<span class="sub">as written: ${esc(i.raw.trim())}</span>` : ""}</td><td>${esc(i.type)}</td><td><span class="d ${cls}">${word}</span></td><td>${esc(i.reason)}</td><td><span class="ev">${esc(i.ev)}</span></td></tr>`;
+    }).join("");
+    $("#results-body").innerHTML = `
+      <div class="summary">
+        <div class="outcome o-${r.outcome}">${esc(r.outcome).replace(/_/g, "_<wbr>")}</div>
+        <p>${esc(r.summary)}</p>
+        <p class="meta">Checked ${esc(run.ranAt.toLocaleString())}${run.fp ? `. Input fingerprint (SHA-256): <code>${esc(run.fp.slice(0, 16))}…</code>` : ""}</p>
+      </div>
+      <div class="stage-block"><h3><span class="num">1</span> Sender check <span class="tag ${s1[1]}">${s1[0]}</span></h3><ul class="findings">${st.sender.findings.map(finding).join("")}</ul></div>
+      <div class="stage-block"><h3><span class="num">2</span> Harm check <span class="tag ${s2[1]}">${s2[0]}</span></h3>${harmBody}</div>
+      <div class="stage-block"><h3><span class="num">3</span> Corroboration <span class="tag ${s3[1]}">${s3[0]}</span></h3>${corrBody}</div>
+      <div class="stage-block">
+        <h3>Indicators</h3>
+        ${r.indicators.length ? `<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th scope="col">Indicator</th><th scope="col">Type</th><th scope="col">Decision</th><th scope="col">Why</th><th scope="col">Evidence</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="note">No indicators were given.</p>`}
+      </div>
+      <div class="result-actions">
+        <button type="button" class="btn btn-primary" id="dl-report">Download report</button>
+        <button type="button" class="btn btn-secondary" id="dl-blocklist" ${r.enforce.length ? "" : "disabled"}>Download blocklist</button>
+        <button type="button" class="btn btn-secondary" id="copy-summary">Copy summary</button>
+      </div>`;
+    $("#dl-report").addEventListener("click", () => download(`ioc-gate-report-${stamp(run.ranAt)}.json`, JSON.stringify(buildReport(run), null, 2), "application/json"));
+    $("#dl-blocklist").addEventListener("click", () => {
+      const lines = [`# IOC Gate blocklist, ${run.ranAt.toISOString()}`, `# Only indicators seen in our logs and confirmed out-of-band (${run.cfg.evidence.logs}; ${run.cfg.evidence.contact})`]
+        .concat(r.enforce.map((i) => i.ip || i.host || i.value));
+      download(`ioc-gate-blocklist-${stamp(run.ranAt)}.txt`, lines.join("\n") + "\n", "text/plain");
+    });
+    $("#copy-summary").addEventListener("click", () => copyText(summaryText(run)));
+  }
+
+  // ---------- exports ----------
+  const stamp = (d) => d.toISOString().replace(/[:]/g, "").replace(/\..+/, "");
+  function buildReport(run) {
+    const r = run.result;
+    return {
+      tool: "IOC Gate prototype", case_file: "CR-26-047", checked_at: run.ranAt.toISOString(),
+      input_fingerprint_sha256: run.fp, decision: r.outcome, summary: r.summary,
+      notice: {
+        from: run.input.from, reply_to: run.input.replyTo, return_path: run.input.returnPath, authentication: run.input.auth,
+        links: G.lines(run.input.links), registration: run.input.reg,
+        confirmed_out_of_band: run.input.confirmed, confirmation_note: run.input.confirmNote,
+        log_lines_searched: G.lines(run.input.logs).length,
+      },
+      checks: {
+        sender_check: { result: r.stages.sender.status, findings: r.stages.sender.findings.map((f) => ({ result: f.status, finding: f.text, evidence: f.ev })) },
+        harm_check: { result: r.stages.harm.shown, harmful_entries: r.stages.harm.hits.map((h) => ({ indicator: h.raw.trim(), points_at: h.harm, evidence: h.harmEv })) },
+        corroboration: { result: r.stages.corroboration.status },
+      },
+      indicators: r.indicators.map((i) => ({ indicator: i.raw.trim(), type: i.type, decision: i.decision, reason: i.reason, evidence: i.ev, seen_in_logs: i.logCount || 0 })),
+      blocklist: r.enforce.map((i) => i.ip || i.host || i.value),
+      settings_used: run.cfg,
+    };
+  }
+  function summaryText(run) {
+    const r = run.result;
+    const out = [`IOC Gate decision: ${r.outcome}`, r.summary, ""];
+    r.indicators.forEach((i) => out.push(`${DECISION[i.decision][0]}: ${i.raw.trim()} (${i.reason})`));
+    out.push("", `Checked ${run.ranAt.toISOString()}${run.fp ? ", input fingerprint " + run.fp : ""}`);
+    return out.join("\n");
+  }
+  function download(name, text, type) {
+    const blob = new Blob([text], { type });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    toast(`Downloaded ${name}`);
+  }
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); toast("Summary copied"); }
+    catch (e) {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); toast("Summary copied"); } catch (e2) { toast("Couldn’t copy. Select the text and copy it yourself."); }
+      ta.remove();
+    }
+  }
+
+  // ---------- settings ----------
+  function fillSettings() {
+    $("#s-supplier").value = cfg.supplierDomains.join("\n");
+    $("#s-org").value = cfg.supplierOrg;
+    $("#s-before").value = cfg.registeredBefore;
+    $("#s-ourdomains").value = cfg.ourDomains.join("\n");
+    $("#s-ranges").value = cfg.ourRanges.map((r) => `${r.cidr} ${r.label}`).join("\n");
+    $("#s-private").checked = !!cfg.protectPrivate;
+    $("#s-protected").value = cfg.protectedServices.join("\n");
+    $("#s-distance").value = cfg.lookalikeDistance;
+    Object.keys(cfg.evidence).forEach((k) => { const el = $("#e-" + k); if (el) el.value = cfg.evidence[k]; });
+    $("#settings-error").hidden = true;
+  }
+  function domainList(text) {
+    const out = [], bad = [];
+    for (const l of G.lines(text)) { const h = G.hostFromAny(l); if (h && h.ascii.includes(".")) out.push(h.ascii); else bad.push(l); }
+    return { out, bad };
+  }
+  function readSettings() {
+    const errors = [];
+    const sup = domainList($("#s-supplier").value);
+    const own = domainList($("#s-ourdomains").value);
+    const prot = domainList($("#s-protected").value);
+    [sup, own, prot].forEach((d) => d.bad.forEach((b) => errors.push(`“${b}” isn’t a domain.`)));
+    if (!sup.out.length) errors.push("Add at least one supplier domain.");
+    const ranges = [];
+    for (const l of G.lines($("#s-ranges").value)) {
+      const [cidr, ...rest] = l.split(/\s+/);
+      if (!G.parseCidr(cidr)) errors.push(`“${cidr}” isn’t an IPv4 range like 10.0.0.0/8.`);
+      else ranges.push({ cidr, label: rest.join(" ") || cidr });
+    }
+    const dist = Number($("#s-distance").value);
+    if (!(dist >= 1 && dist <= 3)) errors.push("The look-alike distance must be 1, 2 or 3.");
+    const evidence = {};
+    Object.keys(G.DEFAULT_CONFIG.evidence).forEach((k) => { evidence[k] = $("#e-" + k).value.trim(); });
+    return {
+      errors,
+      value: { supplierDomains: sup.out, supplierOrg: $("#s-org").value.trim(), registeredBefore: $("#s-before").value, ourDomains: own.out, ourRanges: ranges, protectPrivate: $("#s-private").checked, protectedServices: prot.out, lookalikeDistance: Math.round(dist) || 2, evidence },
+    };
+  }
+  function applySettings(value, message) {
+    cfg = value;
+    const stored = save(KEY_CFG, cfg);
+    paintEvidenceLabels();
+    toast(stored ? message : message + " They’ll reset when you close this page.");
+  }
+  $("#settings-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const { errors, value } = readSettings();
+    const box = $("#settings-error");
+    if (errors.length) { box.textContent = errors.join(" "); box.hidden = false; return; }
+    box.hidden = true;
+    applySettings(value, "Settings saved.");
+  });
+  $("#settings-reset").addEventListener("click", () => { applySettings(G.clone(G.DEFAULT_CONFIG), "Sample settings restored."); fillSettings(); });
+  $("#settings-export").addEventListener("click", () => download("ioc-gate-settings.json", JSON.stringify(cfg, null, 2), "application/json"));
+  $("#settings-import-btn").addEventListener("click", () => $("#settings-import").click());
+  $("#settings-import").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        const merged = Object.assign(G.clone(G.DEFAULT_CONFIG), data);
+        merged.evidence = Object.assign(G.clone(G.DEFAULT_CONFIG.evidence), data.evidence || {});
+        if (!Array.isArray(merged.supplierDomains) || !merged.supplierDomains.length) throw new Error("no supplier domains");
+        applySettings(merged, "Settings imported.");
+        fillSettings();
+      } catch (err) { toast("That file isn’t an IOC Gate settings file."); }
+      e.target.value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  // ---------- audit log ----------
+  function renderAudit() {
+    const wrap = $("#audit-table");
+    if (!audit.length) { wrap.innerHTML = `<div class="empty"><p>No runs yet. Every time you run the gate, it’s recorded here.</p></div>`; return; }
+    wrap.innerHTML = `<table><thead><tr><th scope="col">Checked</th><th scope="col">From</th><th scope="col">Decision</th><th scope="col">Indicators</th><th scope="col">Blocked</th></tr></thead><tbody>${audit.map((a) => `<tr><td>${esc(new Date(a.time).toLocaleString())}</td><td class="ind">${esc(a.from)}</td><td><strong>${esc(a.outcome)}</strong></td><td>${a.indicators}</td><td>${a.blocked}</td></tr>`).join("")}</tbody></table>`;
+  }
+  $("#audit-json").addEventListener("click", () => download("ioc-gate-audit-log.json", JSON.stringify(audit, null, 2), "application/json"));
+  $("#audit-csv").addEventListener("click", () => {
+    const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const rows = [["checked_at", "from", "decision", "indicators", "blocked", "input_fingerprint_sha256"].join(",")]
+      .concat(audit.map((a) => [a.time, a.from, a.outcome, a.indicators, a.blocked, a.fingerprint].map(q).join(",")));
+    download("ioc-gate-audit-log.csv", rows.join("\n") + "\n", "text/csv");
+  });
+  let clearArmed = false;
+  $("#audit-clear").addEventListener("click", (e) => {
+    if (!clearArmed) { clearArmed = true; e.target.textContent = "Click again to clear the log"; setTimeout(() => { clearArmed = false; e.target.textContent = "Clear the log"; }, 4000); return; }
+    audit = []; save(KEY_LOG, audit); renderAudit(); clearArmed = false; e.target.textContent = "Clear the log"; toast("Audit log cleared.");
+  });
+
+  // ---------- self-test ----------
+  function renderSelfTest() {
+    const res = G.selfTest();
+    const passed = res.filter((r) => r.ok).length;
+    $("#selftest-out").innerHTML = `<p class="${passed === res.length ? "ok" : "bad"}">${passed} of ${res.length} examples gave the expected decision.</p><table style="margin-top:8px"><thead><tr><th scope="col">Example</th><th scope="col">Expected</th><th scope="col">Got</th><th scope="col">Result</th></tr></thead><tbody>${res.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.expected)}</td><td>${esc(r.got)}</td><td class="${r.ok ? "ok" : "bad"}">${r.ok ? "Match" : "Mismatch"}</td></tr>`).join("")}</tbody></table>`;
+    return res;
+  }
+  $("#selftest-run").addEventListener("click", renderSelfTest);
+
+  // ---------- start ----------
+  paintEvidenceLabels();
+  if (location.hash === "#selftest") {
+    showTab("tab-about");
+    const res = renderSelfTest();
+    document.body.setAttribute("data-selftest", res.every((r) => r.ok) ? "pass" : "fail");
+  }
+})();
+</script>
+</body>
+</html>
